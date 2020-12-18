@@ -23,6 +23,18 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.ticker import NullLocator
 
+class opt:
+    image_folder = "data/samples"
+    model_def = "config/yolov3.cfg"
+    weights_path = "weights/yolov3.weights"
+    class_path = "data/coco.names"
+    conf_thres = 0.8
+    nms_thres = 0.4
+    batch_size = 1
+    n_cpu = 0
+    img_size = 416
+    checkpoint_model= str()
+
 def plot_one_box(x, img, color=None, label=None, line_thickness=None):
     # Plots one bounding box on image img
     tl = line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1  # line/font thickness
@@ -43,19 +55,6 @@ def figure_to_array(fig):
     """
     fig.canvas.draw()
     return np.array(fig.canvas.renderer._renderer)
-
-class opt:
-    image_folder = "data/samples"
-    model_def = "config/yolov3.cfg"
-    weights_path = "weights/yolov3.weights"
-    class_path = "data/coco.names"
-    conf_thres = 0.8
-    nms_thres = 0.4
-    batch_size = 1
-    n_cpu = 0
-    img_size = 416
-    checkpoint_model= str()
-
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -87,54 +86,57 @@ Tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTen
 imgs = []  # Stores image paths
 img_detections = []  # Stores detections for each image index
 
-print("\nPerforming object detection:")
-prev_time = time.time()
-for batch_i, (img_paths, input_imgs) in enumerate(dataloader):
-    # Configure input
-    input_imgs = Variable(input_imgs.type(Tensor))
+# webcam define
+width = 416
+height = 416
 
-    # Get detections
-    with torch.no_grad():
-        detections = model(input_imgs)
-        detections = non_max_suppression(detections, opt.conf_thres, opt.nms_thres)
-
-    # Log progress
-    current_time = time.time()
-    inference_time = datetime.timedelta(seconds=current_time - prev_time)
-    prev_time = current_time
-    print("\t+ Batch %d, Inference Time: %s" % (batch_i, inference_time))
-
-    # Save image and detections
-    imgs.extend(img_paths)
-    img_detections.extend(detections)
+cam = cv2.VideoCapture(0)
+cam.set(3, width)
+cam.set(4, height)
 
 # Bounding-box colors
 cmap = plt.get_cmap("tab20b")
 colors = [cmap(i) for i in np.linspace(0, 1, 20)]
 
-print("\nSaving images:")
-# Iterate through images and save plot of detections
-for img_i, (path, detections) in enumerate(zip(imgs, img_detections)):
+frames = 0
+start = time.time()
 
-    print("(%d) Image: '%s'" % (img_i, path))
+# yolo webcam demo
+plt.figure()
+while True:
+    ret_val, img = cam.read()
+    # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # Mirror 
+    img = cv2.flip(img, 1)
+    img = cv2.resize(img, (416, 416))
+    
+    input_imgs = transforms.ToTensor()(img)
+    input_imgs = torch.unsqueeze(input_imgs, 0).cuda()
 
+    # Get detections
+    with torch.no_grad():
+        detections = model(input_imgs)
+        detections = non_max_suppression(detections, opt.conf_thres, opt.nms_thres)
+        img_detections.extend(detections)
+    
+    
     # Create plot
-    img = np.array(Image.open(path))
-    plt.figure()
+    # img = np.array(Image.open(path))
+
     fig, ax = plt.subplots(1)
     ax.imshow(img)
 
     # Draw bounding boxes and labels of detections
     if detections is not None:
         # Rescale boxes to original image
-        detections = rescale_boxes(detections, opt.img_size, img.shape[:2])
-        
+        detections = rescale_boxes(detections[0], opt.img_size, img.shape[:2])
+
         unique_labels = detections[:, -1].cpu().unique()
         n_cls_preds = len(unique_labels)
         bbox_colors = random.sample(colors, n_cls_preds)
         for x1, y1, x2, y2, conf, cls_conf, cls_pred in detections:
 
-            print("\t+ Label: %s, Conf: %.5f" % (classes[int(cls_pred)], cls_conf.item()))
+#             print("\t+ Label: %s, Conf: %.5f" % (classes[int(cls_pred)], cls_conf.item()))
 
             box_w = x2 - x1
             box_h = y2 - y1
@@ -158,80 +160,20 @@ for img_i, (path, detections) in enumerate(zip(imgs, img_detections)):
     plt.axis("off")
     plt.gca().xaxis.set_major_locator(NullLocator())
     plt.gca().yaxis.set_major_locator(NullLocator())
-    
+
     fig_img = figure_to_array(fig)
-    plt.close()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-width = 640
-height = 360
-
-cam = cv2.VideoCapture(0)
-cam.set(3, width)
-cam.set(4, height)
-
-frames = 0
-start = time.time()
-while True:
-    # Get webcam input
-    ret_val, img = cam.read()
-
-    # Mirror 
-    img = cv2.flip(img, 1)
-    img = transforms.Totensor()
-
-    # Free-up unneeded cuda memory
-#     torch.cuda.empty_cache()
-
-#     # Generate image
-#     content_tensor = utils.itot(img).to(device)
-#     generated_tensor = net(content_tensor)
-#     generated_image = utils.ttoi(generated_tensor.detach())
-#     if (PRESERVE_COLOR):
-#         generated_image = utils.transfer_color(img, generated_image)
-
-#     generated_image = generated_image / 255
-
-    # Show webcam
+    
+#     plt.close()
     frames += 1
-    print("FPS of the video is {:5.2f}".format( frames / (time.time() - start)))
+    intv = time.time() - start
+    if intv > 1:
+        print("FPS of the video is {:5.2f}".format( frames / intv ))
+        start = time.time()
+        frames = 0
+    
     cv2.imshow('Demo webcam', img)
     if cv2.waitKey(1) == 27: 
         break  # esc to quit
+        
 cam.release()
 cv2.destroyAllWindows()
