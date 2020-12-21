@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.ticker import NullLocator
 
+# Argument Parsing by class
 class opt:
     image_folder = "data/samples"
     model_def = "config/yolov3.cfg"
@@ -35,7 +36,7 @@ class opt:
     img_size = 416
     checkpoint_model= str()
 
-def plot_one_box(x, img, color=None, label=None, line_thickness=None):
+def plot_one_box(x, img, color=1, label=None, line_thickness=None):
     # Plots one bounding box on image img
     tl = line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1  # line/font thickness
     color = color or [random.randint(0, 255) for _ in range(3)]
@@ -56,6 +57,9 @@ def figure_to_array(fig):
     fig.canvas.draw()
     return np.array(fig.canvas.renderer._renderer)
 
+
+# Model Load
+print("Model Loading")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 os.makedirs("output", exist_ok=True)
@@ -86,32 +90,28 @@ Tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTen
 imgs = []  # Stores image paths
 img_detections = []  # Stores detections for each image index
 
-# webcam define
-width = 416
-height = 416
+# Webcam Define
+print("Webcam Define")
+width = 1280
+height = 720
 
 cam = cv2.VideoCapture(0)
 cam.set(3, width)
 cam.set(4, height)
 
-# Bounding-box colors
-cmap = plt.get_cmap("tab20b")
-colors = [cmap(i) for i in np.linspace(0, 1, 20)]
-
 frames = 0
 start = time.time()
 
-# yolo webcam demo
-plt.figure()
 while True:
     ret_val, img = cam.read()
-    # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) # cv reead img as BGR
+
     # Mirror 
     img = cv2.flip(img, 1)
-    img = cv2.resize(img, (416, 416))
+    img_re = cv2.resize(img, (416, 416))
     
-    input_imgs = transforms.ToTensor()(img)
-    input_imgs = torch.unsqueeze(input_imgs, 0).cuda()
+    input_imgs = transforms.ToTensor()(img_re)
+    input_imgs = torch.unsqueeze(input_imgs, 0).to(device)
 
     # Get detections
     with torch.no_grad():
@@ -119,55 +119,20 @@ while True:
         detections = non_max_suppression(detections, opt.conf_thres, opt.nms_thres)
         img_detections.extend(detections)
     
-    
     # Create plot
-    # img = np.array(Image.open(path))
-
-    fig, ax = plt.subplots(1)
-    ax.imshow(img)
-
     # Draw bounding boxes and labels of detections
-    if detections is not None:
+    if detections[0] is not None:
         # Rescale boxes to original image
         detections = rescale_boxes(detections[0], opt.img_size, img.shape[:2])
 
-        unique_labels = detections[:, -1].cpu().unique()
-        n_cls_preds = len(unique_labels)
-        bbox_colors = random.sample(colors, n_cls_preds)
         for x1, y1, x2, y2, conf, cls_conf, cls_pred in detections:
-
-#             print("\t+ Label: %s, Conf: %.5f" % (classes[int(cls_pred)], cls_conf.item()))
-
-            box_w = x2 - x1
-            box_h = y2 - y1
-
-            color = bbox_colors[int(np.where(unique_labels == int(cls_pred))[0])]
-            # Create a Rectangle patch
-            bbox = patches.Rectangle((x1, y1), box_w, box_h, linewidth=2, edgecolor=color, facecolor="none")
-            # Add the bbox to the plot
-            ax.add_patch(bbox)
-            # Add label
-            plt.text(
-                x1,
-                y1,
-                s=classes[int(cls_pred)],
-                color="white",
-                verticalalignment="top",
-                bbox={"color": color, "pad": 0},
-            )
-
-    # Save generated image with detections
-    plt.axis("off")
-    plt.gca().xaxis.set_major_locator(NullLocator())
-    plt.gca().yaxis.set_major_locator(NullLocator())
-
-    fig_img = figure_to_array(fig)
+            plot_one_box((x1,y1,x2,y2), img, label=classes[int(cls_pred)])
     
-#     plt.close()
     frames += 1
     intv = time.time() - start
     if intv > 1:
         print("FPS of the video is {:5.2f}".format( frames / intv ))
+        print(detections)
         start = time.time()
         frames = 0
     
